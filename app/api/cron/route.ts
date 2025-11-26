@@ -11,7 +11,7 @@ export async function GET() {
   const collectionReport: any = {}; // 수집 결과 리포트
 
   // 1. 야후 라이브러리 로드
-  let yahooFinance;
+  let yahooFinance: any;
   try {
     const pkg = require('yahoo-finance2');
     const yfImport = pkg.default || pkg;
