@@ -4,7 +4,7 @@ export const marketStatus: MarketStatus = '주의';
 
 export const mainBriefing = `현재 시장은 **주의** 구간에 진입했습니다. 10년물 금리 상승으로 기술주 밸류에이션 부담이 커지고 있으며, VIX는 평온한 수준을 유지 중입니다. 유동성 지표는 중립적이나, 연준의 긴축 기조가 지속되면서 **살얼음판** 위를 걷는 상황입니다. 단기 변동성에 대비하되, 장기 투자자는 분할 매수 전략을 권장합니다.`;
 
-export const lastUpdated = 'Oct 26, 8:00 AM PST';
+export const lastUpdated = "2025-01-01T00:00:00.000Z";
 
 export const sectorsData: SectorData[] = [
   {

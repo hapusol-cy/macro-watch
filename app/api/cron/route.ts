@@ -6,11 +6,11 @@ import axios from 'axios';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  console.log("🤖 CRON: 데이터 수집 및 분석 시작...");
+  console.log("🤖 CRON: 뉴스 기반 정밀 분석 시작...");
   
-  const collectionReport: any = {}; // 수집 결과 리포트
+  const collectionReport: any = {};
 
-  // 1. 야후 라이브러리 로드
+  // 1. 야후 라이브러리 준비
   let yahooFinance: any;
   try {
     const pkg = require('yahoo-finance2');
@@ -24,11 +24,10 @@ export async function GET() {
     const FRED_KEY = process.env.FRED_API_KEY!;
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
     // ---------------------------------------------------------
-    // 2. CNN Fear & Greed (헤더 우회 시도)
+    // 2. CNN Fear & Greed
     // ---------------------------------------------------------
     let cnnScore = 0;
     let isCnnFetched = false;
@@ -44,12 +43,10 @@ export async function GET() {
         isCnnFetched = true;
         collectionReport['CNN'] = "✅ Real API";
       }
-    } catch (e) { 
-      collectionReport['CNN'] = "⚠️ Fetch Failed (Will use AI)";
-    }
+    } catch (e) { collectionReport['CNN'] = "⚠️ AI Estimate"; }
 
     // ---------------------------------------------------------
-    // 3. 야후 파이낸스
+    // 3. 야후 파이낸스 데이터 (숫자)
     // ---------------------------------------------------------
     const symbols = [
       { ticker: '^TNX', name: 'us10y' },
@@ -68,12 +65,31 @@ export async function GET() {
           price: quote.regularMarketPrice || 0,
           changePercent: quote.regularMarketChangePercent || 0
         };
-        collectionReport[item.name] = "✅ Yahoo";
+        collectionReport[item.name] = "✅ OK";
       } catch (e) { 
         marketResults[item.name] = { price: 0, changePercent: 0 }; 
-        collectionReport[item.name] = "❌ Failed";
+        collectionReport[item.name] = "❌ Fail";
       }
     }));
+
+    // ---------------------------------------------------------
+    // 3-1. ⭐ [핵심 추가] 최신 뉴스 헤드라인 가져오기
+    // ---------------------------------------------------------
+    let newsHeadlines = "";
+    try {
+      // 'Federal Reserve' 키워드로 관련 뉴스 검색
+      const newsResult = await yahooFinance.search("Federal Reserve", { newsCount: 5 });
+      if (newsResult.news && newsResult.news.length > 0) {
+        newsHeadlines = newsResult.news.map((n: any) => `- ${n.title}`).join("\n");
+        collectionReport['News'] = `✅ Fetched ${newsResult.news.length} headlines`;
+      } else {
+        newsHeadlines = "뉴스 수집 실패 (데이터 분석 위주로 진행하세요)";
+        collectionReport['News'] = "⚠️ No Data";
+      }
+    } catch (e) {
+      newsHeadlines = "뉴스 수집 중 에러 발생";
+      collectionReport['News'] = "❌ Error";
+    }
 
     // ---------------------------------------------------------
     // 4. FRED 데이터
@@ -82,12 +98,9 @@ export async function GET() {
       try {
         const res = await axios.get(`https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${FRED_KEY}&file_type=json&sort_order=desc&limit=1`);
         const val = parseFloat(res.data.observations?.[0]?.value || '0');
-        collectionReport[name] = "✅ FRED";
+        collectionReport[name] = "✅ OK";
         return val;
-      } catch (e) { 
-        collectionReport[name] = "❌ Failed";
-        return 0; 
-      }
+      } catch (e) { return 0; }
     };
 
     const tga = await getFredData('WTREGEN', 'tga');
@@ -96,7 +109,7 @@ export async function GET() {
     const breakeven = await getFredData('T10YIE', 'breakeven');
 
     // ---------------------------------------------------------
-    // 5. AI 분석 (Full Data)
+    // 5. AI 분석 (뉴스 데이터 포함!)
     // ---------------------------------------------------------
     let aiAnalysis = { 
       status: "중립", 
@@ -110,22 +123,23 @@ export async function GET() {
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
       
       const prompt = `
-        금융 전문가로서 데이터를 분석해.
+        당신은 월가 최고의 거시경제 전략가입니다. 아래 데이터를 종합하여 시장을 분석하세요.
 
-        [시장 데이터]
-        - 미국10년물: ${marketResults.us10y?.price}%, DXY: ${marketResults.dxy?.price}
-        - 엔달러: ${marketResults.usdjpy?.price}, SOFR: ${sofr}, 기대인플레: ${breakeven}
-        - VIX: ${marketResults.vix?.price}, 하이일드: ${highYield}
-        - 유가: ${marketResults.wti?.price}, 비트코인: ${marketResults.bitcoin?.price}
-        - TGA잔고: ${tga}
-        - CNN공포지수(실측): ${isCnnFetched ? cnnScore : '수집실패(추정필요)'}
+        [1. 수치 데이터]
+        - 10년물 금리: ${marketResults.us10y?.price}%
+        - VIX: ${marketResults.vix?.price}
+        - 유가: ${marketResults.wti?.price}$
+        - CNN공포지수(실측): ${isCnnFetched ? cnnScore : '없음'}
 
-        [요청]
-        1. 단순 나열 금지. 지표 간 연관성 분석.
-        2. 시장 상태 [위험/주의/중립/긍정/과열] 택1.
-        3. 3줄 요약 (핵심/영향/전략).
-        4. FedWatch(금리동결확률 0~100) 추정.
-        5. CNN 점수(0~100) 추정 (실측값 없으면 VIX 보고 추정).
+        [2. ⭐ 최신 뉴스 헤드라인 (Fed 발언/시장 분위기)]
+        ${newsHeadlines}
+
+        [요청사항]
+        1. **뉴스 분석 반영**: 위 뉴스 헤드라인에 연준(Fed) 위원의 매파/비둘기파 발언이 있다면 금리 확률 추정에 가중치를 두세요.
+        2. 시장 상태 판정 [위험/주의/중립/긍정/과열].
+        3. 3줄 요약 (뉴스 내용이 중요하다면 요약에 포함할 것).
+        4. **FedWatch 확률 추정**: 금리와 **뉴스 분위기**를 고려하여 금리 동결(또는 인하) 확률(0~100%)을 추정하세요. (예: 매파적 발언이 많으면 확률을 낮출 것)
+        5. CNN 점수 추정 (실측값 없으면 추정).
 
         [JSON 포맷]
         { "status":"", "summary":[], "estimated_fed_prob":0, "estimated_cnn_score":0 }
@@ -134,20 +148,15 @@ export async function GET() {
       const result = await model.generateContent(prompt);
       const text = result.response.text().replace(/```json|```/g, '').trim();
       aiAnalysis = JSON.parse(text);
-      collectionReport['AI_Analysis'] = "✅ Gemini 2.5";
+      collectionReport['AI_Analysis'] = "✅ Gemini 2.5 (With News)";
       
     } catch (e: any) {
-      console.error("AI Error:", e.message);
       collectionReport['AI_Analysis'] = "❌ Failed";
     }
 
-    // ---------------------------------------------------------
-    // 6. 데이터 조립 (여기가 누락됐던 부분!)
-    // ---------------------------------------------------------
     const finalCnnScore = isCnnFetched ? cnnScore : aiAnalysis.estimated_cnn_score;
     const finalFedProb = aiAnalysis.estimated_fed_prob;
 
-    // 🔥 [중요] finalMarketData 변수 정의
     const finalMarketData = { 
       ...marketResults, 
       tga: { price: tga, changePercent: 0 }, 
@@ -160,9 +169,6 @@ export async function GET() {
 
     collectionReport['CNN_Source'] = isCnnFetched ? "Real API" : "AI Estimated";
 
-    // ---------------------------------------------------------
-    // 7. DB 저장
-    // ---------------------------------------------------------
     const { error } = await supabase
       .from('market_logs')
       .insert([{ market_data: finalMarketData, ai_analysis: aiAnalysis }]);
@@ -176,7 +182,6 @@ export async function GET() {
     });
 
   } catch (error: any) {
-    console.error("🔥 CRON Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

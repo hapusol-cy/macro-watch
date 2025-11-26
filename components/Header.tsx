@@ -55,7 +55,7 @@ export function Header({ lastUpdated, briefing, status, language, onLanguageChan
             <div className="text-xs text-gray-400">
               {t.lastUpdated}: {lastUpdated}
             </div>
-            <LanguageSelector currentLanguage={language} onLanguageChange={onLanguageChange} />
+            {/* <LanguageSelector currentLanguage={language} onLanguageChange={onLanguageChange} /> */}
           </div>
         </div>
 

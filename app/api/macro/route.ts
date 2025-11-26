@@ -51,7 +51,8 @@ export async function GET() {
     const latestLog = data[0];
     return NextResponse.json({
       marketData: latestLog.market_data,
-      aiAnalysis: latestLog.ai_analysis
+      aiAnalysis: latestLog.ai_analysis,
+      lastUpdated: latestLog.created_at || latestLog.timestamp || null
     });
 
   } catch (error: any) {

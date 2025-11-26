@@ -62,9 +62,31 @@ const KEY_MAPPING: { [key: string]: string } = {
   'DXY (달러 인덱스)': 'dxy'
 };
 
+// 신호등(상태) 계산 함수(문자열 포함 검사 활용)
+const calculateSignal = (name: string, value: number, change: number): 'green' | 'yellow' | 'red' => {
+  // 1. CNN 공포지수 (점수 기준)
+  if (name.includes('CNN') || name.includes('Fear')) {
+    if (value < 25) return 'red';
+    if (value > 75) return 'red';
+    return 'green';
+  }
+  // 2. 역방향 지표 (오르면 나쁨)
+  const inverseIndicators = ['VIX', 'USD/JPY', '10Y', 'WTI', 'High Yield', 'DXY', 'SOFR'];
+  const isInverse = inverseIndicators.some(k => name.includes(k));
+  if (isInverse) {
+    if (change > 1.0) return 'red';    // 1% 이상 급등 -> 위험
+    if (change > 0) return 'yellow';   // 살짝 상승 -> 주의
+    return 'green';                    // 하락 -> 좋음
+  }
+  // 3. 정방향 지표 (오르면 좋음 - 비트코인 등)
+  if (change < -1.0) return 'red';     // 1% 이상 급락 -> 위험
+  if (change < 0) return 'yellow';     // 살짝 하락 -> 주의
+  return 'green';                      // 상승 -> 좋음
+};
+
 export default function Home() {
   const [selectedIndicator, setSelectedIndicator] = useState<IndicatorData | null>(null);
-  const [language, setLanguage] = useState<Language>('en');
+  const [language, setLanguage] = useState<Language>('ko');
   
   // 데이터 상태
   const [marketData, setMarketData] = useState<MarketApiResponse['marketData'] | null>(null);
@@ -81,17 +103,23 @@ export default function Home() {
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        const data: MarketApiResponse = await response.json();
+        const data: MarketApiResponse & { lastUpdated?: string } = await response.json();
         
         setMarketData(data.marketData);
         setAiAnalysis(data.aiAnalysis);
-        
-        // 현재 시간으로 업데이트 타임스탬프 찍기
-        const now = new Date();
-        setLastUpdated(now.toLocaleString('ko-KR', { 
-          year: 'numeric', month: '2-digit', day: '2-digit', 
-          hour: '2-digit', minute: '2-digit', hour12: false 
-        }));
+        // 서버 최신 업데이트 시각 활용 (ISO), fallback은 기존 방식
+        if (data.lastUpdated) {
+          // 예: 2025-11-26T16:12:09.000Z → YYYY. MM. DD. HH:mm로 표시
+          const d = new Date(data.lastUpdated);
+          const timeStr = `${d.getFullYear()}. ${(d.getMonth()+1).toString().padStart(2,'0')}. ${d.getDate().toString().padStart(2,'0')}. ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+          setLastUpdated(timeStr);
+        } else {
+          const now = new Date();
+          setLastUpdated(now.toLocaleString('ko-KR', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+          }));
+        }
 
       } catch (e: any) {
         console.error("Fetch Error:", e);
@@ -114,13 +142,12 @@ export default function Home() {
 
   const getDisplayValue = (indicatorName: string) => {
     if (!marketData) return 'N/A';
-    
     const key = getApiKey(indicatorName);
     const data = marketData[key];
-
     if (data && data.price !== undefined) {
-      // 숫자가 너무 길면 소수점 2자리로 자름
-      return typeof data.price === 'number' ? data.price.toFixed(2) : data.price;
+      const n = Number(data.price);
+      if (isNaN(n)) return 'N/A';
+      return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     return 'N/A';
   };
@@ -132,6 +159,9 @@ export default function Home() {
     if (data && data.changePercent !== undefined) {
       const n = Number(data.changePercent);
       if (isNaN(n)) return 0;
+      // 3자리 콤마 표시가 필요한 곳이 문자열 출력용이면 아래처럼 하면 되지만,
+      // 만약 숫자 타입만 반환한다면 return n.toLocaleString ... 대신 그대로 toFixed만 적용
+      // 여기서는 IndicatorCard 등에 들어가니까 value/display와 동일하게 가공한 문자열 반환
       return Number(n.toFixed(2));
     }
     return 0;
@@ -162,14 +192,17 @@ export default function Home() {
   // 기존 mockData의 구조를 유지하되, 값(value/change)만 API 데이터로 교체
   const updatedSectorsData = initialSectorsData.map(sector => ({
     ...sector,
-    indicators: sector.indicators.map(indicator => ({
-      ...indicator,
-      // 여기서 API 데이터를 주입
-      value: getDisplayValue(indicator.name),
-      change: Number(getDisplayChange(indicator.name)),
-      // 퍼센트 값이 있으면 무조건 percent 타입으로 표시
-      changeType: 'percent' as const, 
-    })),
+    indicators: sector.indicators.map(indicator => {
+      const valueRaw = marketData ? Number(marketData[getApiKey(indicator.name)]?.price) : 0;
+      const changeRaw = Number(getDisplayChange(indicator.name));
+      return {
+        ...indicator,
+        value: getDisplayValue(indicator.name),
+        change: changeRaw,
+        changeType: 'percent' as const,
+        status: calculateSignal(indicator.name, valueRaw, changeRaw)
+      };
+    }),
   }));
 
   if (isLoading) {
