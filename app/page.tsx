@@ -5,7 +5,7 @@ import { Toaster } from 'sonner';
 import { Header } from '../components/Header';
 import { SectorSection } from '../components/SectorSection';
 import { DetailModal } from '../components/DetailModal';
-import { sectorsData as initialSectorsData, mainBriefing as initialMainBriefing, marketStatus as initialMarketStatus } from '../data/mockData';
+import { sectorsData as initialSectorsData, mainBriefing as initialMainBriefing, marketStatus as initialMarketStatus, lastUpdated as initialLastUpdated } from '../data/mockData';
 import { IndicatorData, MarketStatus } from '../types';
 import { Language } from '../types/languages';
 
