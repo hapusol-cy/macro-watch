@@ -125,14 +125,14 @@ export default function Home() {
     return 'N/A';
   };
 
-  const getDisplayChange = (indicatorName: string) => {
+  const getDisplayChange = (indicatorName: string): number => {
     if (!marketData) return 0;
-
     const key = getApiKey(indicatorName);
     const data = marketData[key];
-
     if (data && data.changePercent !== undefined) {
-      return data.changePercent.toFixed(2);
+      const n = Number(data.changePercent);
+      if (isNaN(n)) return 0;
+      return Number(n.toFixed(2));
     }
     return 0;
   };
@@ -166,7 +166,7 @@ export default function Home() {
       ...indicator,
       // 여기서 API 데이터를 주입
       value: getDisplayValue(indicator.name),
-      change: getDisplayChange(indicator.name),
+      change: Number(getDisplayChange(indicator.name)),
       // 퍼센트 값이 있으면 무조건 percent 타입으로 표시
       changeType: 'percent' as const, 
     })),
